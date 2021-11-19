@@ -1,0 +1,114 @@
+import tkinter as tk
+import pytube
+import moviepy.editor as mp
+import speech_recognition as sr 
+from pydub import AudioSegment
+from pydub.silence import split_on_silence
+from tkinter import *
+import os
+
+# function declarations.
+r = sr.Recognizer()
+def rgb_hack(rgb):
+    return "#%02x%02x%02x" % rgb  
+
+def  get_large_audio_transcription(path):
+    sound = AudioSegment.from_wav(path)  
+    chunks = split_on_silence(sound,
+        min_silence_len = 500,
+        silence_thresh = sound.dBFS-14,
+        keep_silence=500,
+    )
+    folder_name = "audio-chunks"
+    if not os.path.isdir(folder_name):
+        os.mkdir(folder_name)
+    whole_text = ""
+    for i, audio_chunk in enumerate(chunks, start=1):
+        chunk_filename = os.path.join(folder_name, f"chunk{i}.wav")
+        audio_chunk.export(chunk_filename, format="wav")
+        with sr.AudioFile(chunk_filename) as source:
+            audio_listened = r.record(source)
+            try:
+                text = r.recognize_google(audio_listened)
+            except sr.UnknownValueError as e:
+                print("Error:", str(e))
+            else:
+                text = f"{text.capitalize()}. "
+                print(chunk_filename, ":", text)
+                whole_text += text
+    return whole_text 
+    
+    
+    
+def wavConversion():
+    
+    dire=var1.get()+"\\"+var2.get()
+    print(dire)
+    clip = mp.VideoFileClip(dire)
+    direC=var1.get()+"\\"+var2.get().split('.')[0]+'.wav'
+    clip.audio.write_audiofile(direC)
+    
+    lb2=tk.Label(root,text='video downloaded and converted sucessfully to wav file').place(x=100,y=200)
+    text=get_large_audio_transcription(direC)
+    
+    lb3=tk.Text(root,height=30,width=100)
+    lb3.place(x=500,y=50)
+    lb3.insert(END,text)
+
+def textCommand():
+    link=var.get()
+    try:
+        yt = pytube.YouTube(link)
+    except:
+        lb5=tk.Label(root,text='error in connection').place(x=100,y=150)
+    try:
+        video=yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution')[-1]
+        video.download(var1.get(),var2.get())
+        lb1=tk.Label(root,text='download completed').place(x=100,y=200)
+    except:
+        print('file not found')
+    wavConversion()
+        
+# gui code start.
+
+root=tk.Tk()
+root.geometry('400x600')
+root.title('download a youtube video using link')
+root.config(bg=rgb_hack((253, 203, 169)))
+
+var=tk.StringVar()
+var1=tk.StringVar()
+var2=tk.StringVar()
+var3=tk.StringVar()
+
+lb1=tk.Label(root,bg=rgb_hack((253,203,169)),text='paste your url here:').place(x = 30,y = 50)
+
+lb2=tk.Label(root,
+text='NOTE:paste your url as this format \nhttps://www.youtube.com/watch?v=(n06H7OcPd-g)\nin your link last part has to be used'
+   ).place(x=30,y=300)
+
+e1=tk.Entry(root,textvariable=var).place(x=200,y=50)
+ 
+lb2=tk.Label(root,bg=rgb_hack((253,203,169)),text="Directory to be installed:").place(x=30,y=75)
+
+e2=tk.Entry(root,textvariable=var1).place(x=200,y=75)
+
+lb3=tk.Label(root,bg=rgb_hack((253,203,169)),text='name including extension:').place(x=30,y=100)
+
+e3=tk.Entry(root,textvariable=var2).place(x=200,y=100)
+
+bt=tk.Button(root,
+          text='submit',fg='black',
+          bg=rgb_hack((171, 199, 204)),
+         activebackground='green',
+         activeforeground='white',command=textCommand).place(x=30,y=150)
+
+
+root.mainloop()
+
+
+
+#sample youtube video URL
+#link = "https://www.youtube.com/watch?v=mpjREfvZiDs"
+
+
