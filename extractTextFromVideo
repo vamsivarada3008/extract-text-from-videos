@@ -1,17 +1,40 @@
 import tkinter as tk
+from tkinter import *
+import tkinter.font
 import pytube
 import moviepy.editor as mp
-import speech_recognition as sr 
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
-from tkinter import *
+from google.cloud import speech
 import os
+import io
 
-# function declarations.
-r = sr.Recognizer()
+# color chooser with the help of R,G,B color mixer.
 def rgb_hack(rgb):
-    return "#%02x%02x%02x" % rgb  
+    return "#%02x%02x%02x" % rgb
 
+
+# Translates the recognized text into target language and makes available
+# in Text box.
+def translate_text(target, text):
+    """Translates text into the target language.
+
+    Target must be an ISO 639-1 language code.
+    See https://g.co/cloud/translate/v2/translate-reference#supported_languages
+    """
+    import six
+    from google.cloud import translate_v2 as translate
+    translate_client = translate.Client()
+    if isinstance(text, six.binary_type):
+        text = text.decode("utf-8")
+    result = translate_client.translate(text, target_language=target)
+    print(u"Text: {}".format(result["input"]))
+    print(u"Translation: {}".format(result["translatedText"]))
+    print(u"Detected source language: {}".format(result["detectedSourceLanguage"]))
+    return result['translatedText']
+    
+# Making the large .WAV file into small chunks and sending that response
+# to google cloud and gives output.
 def  get_large_audio_transcription(path):
     sound = AudioSegment.from_wav(path)  
     chunks = split_on_silence(sound,
@@ -21,94 +44,203 @@ def  get_large_audio_transcription(path):
     )
     folder_name = "audio-chunks"
     if not os.path.isdir(folder_name):
-        os.mkdir(folder_name)
+         os.mkdir(folder_name)
     whole_text = ""
     for i, audio_chunk in enumerate(chunks, start=1):
         chunk_filename = os.path.join(folder_name, f"chunk{i}.wav")
         audio_chunk.export(chunk_filename, format="wav")
-        with sr.AudioFile(chunk_filename) as source:
-            audio_listened = r.record(source)
-            try:
-                text = r.recognize_google(audio_listened)
-            except sr.UnknownValueError as e:
-                print("Error:", str(e))
-            else:
-                text = f"{text.capitalize()}. "
-                print(chunk_filename, ":", text)
-                whole_text += text
-    return whole_text 
-    
-    
-    
-def wavConversion():
-    
-    dire=var1.get()+"\\"+var2.get()
-    print(dire)
-    clip = mp.VideoFileClip(dire)
-    direC=var1.get()+"\\"+var2.get().split('.')[0]+'.wav'
-    clip.audio.write_audiofile(direC)
-    
-    lb2=tk.Label(root,text='video downloaded and converted sucessfully to wav file').place(x=100,y=200)
-    text=get_large_audio_transcription(direC)
-    
-    lb3=tk.Text(root,height=30,width=100)
-    lb3.place(x=500,y=50)
-    lb3.insert(END,text)
+        client = speech.SpeechClient()
+        with io.open(chunk_filename, "rb") as audio_file:
+            content = audio_file.read()
+            audio = speech.RecognitionAudio(content=content)
+        config = speech.RecognitionConfig(
+        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+        audio_channel_count=2,
+        language_code="en-US",
+        )
+        try:
+            
+            response = client.recognize(request={"config": config, "audio": audio})
+        
+            for result in response.results:
+                print("Transcript: {}".format(result.alternatives[0].transcript))
+                whole_text=whole_text+result.alternatives[0].transcript
+        except:
+            errorLabel=Label(root,text='An error occured during recognition',bg=rgb_hack((204, 255, 204)))
+            errorLabel.configure(font=Desired_font)
+            errorLabel.place(x=30,y=500)
 
+    print(whole_text)
+    return whole_text
+
+# Converting the downloaded video into .WAV file and extracting
+# text from .WAV file.
+def wavConversion():
+    try:
+        
+        dire=var1.get()+"\\"+var2.get()
+        print(dire)
+        clip = mp.VideoFileClip(dire)
+        direC=var1.get()+"\\"+var2.get().split('.')[0]+'.wav'
+        clip.audio.write_audiofile(direC)
+    
+        lb2=tk.Label(root,text='video downloaded and extracted successfully',bg=rgb_hack((204, 255, 204)))
+        lb2.configure(font=Desired_font)
+        lb2.place(x=30,y=500)
+        text=get_large_audio_transcription(direC)
+        text1.insert(END,text)
+        text1.insert(END,"\n")
+        text1.insert(END,"\n")
+        text1.insert(END,"\n")
+        translation=translate_text(var4.get(),text)
+        text1.insert(END,"Translated text is: ")
+        text1.insert(END,translation)
+        counting=len(text.split())
+        counting=counting+len(translation.split())
+        fileD=var1.get()+"\\"+var2.get().split('.')[0]+'.txt'
+        file=open(fileD,'a')
+        file.write(text)
+        file.write("\n \n \n ")
+        file.close()
+        count2=Label(root,text=str(counting))
+        count2.configure(font=Desired_font)
+        count2.place(x=900,y=575)
+    except OSError as error:
+        lberror=Label(root,text=error,bg=rgb_hack((204, 255, 204)))
+        lberror.configure(font=Desired_font)
+        lberror.place(x=30,y=500)
+    
+    
+#On submit button click Call of text function
 def textCommand():
     link=var.get()
     try:
         yt = pytube.YouTube(link)
-    except:
-        lb5=tk.Label(root,text='error in connection').place(x=100,y=150)
-    try:
         video=yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution')[-1]
         video.download(var1.get(),var2.get())
-        lb1=tk.Label(root,text='download completed').place(x=100,y=200)
+    except OSError as error:
+        lberror=Label(root,text=error)
+        lberror.configure(font=Desired_font)
+        lberror.place(x=30,y=500)
     except:
-        print('file not found')
+        lb5=tk.Label(root,text='error in connection',bg=rgb_hack((204, 255, 204)))
+        lb5.configure(font=Desired_font)
+        lb5.place(x=30,y=500)
     wavConversion()
-        
-# gui code start.
 
-root=tk.Tk()
-root.geometry('400x600')
-root.title('download a youtube video using link')
-root.config(bg=rgb_hack((253, 203, 169)))
+# clearing text from entry
+def clear_text():
+    e1.delete(0,END)
+    e2.delete(0,END)
+    e3.delete(0,END)
+    e4.delete(0,END)
+    
+    
+    
+
+# Start of GUI CODE takes input from USER.  
+root=Tk()
+width= root.winfo_screenwidth() 
+height= root.winfo_screenheight()
+#setting tkinter window size
+root.title('EXTRACT TEXT FROM VIDEO')
+root.geometry("%dx%d" % (width, height))
+print(width," ",height)
+root.config(bg=rgb_hack((204, 255, 204)))
+
+
+
+canvas=Canvas(root,height=400,width=500)
+canvas.configure(bg=rgb_hack((191, 191, 191)))
+canvas.place(x=20,y=70)
+scrollbar = Scrollbar(root)
+scrollbar.pack(side=RIGHT, fill=Y)
 
 var=tk.StringVar()
 var1=tk.StringVar()
 var2=tk.StringVar()
 var3=tk.StringVar()
+var4=tk.StringVar()
+Desired_font =tkinter.font.Font( family = "Times New Roman", 
+                                 size = 15, 
+                                 weight = "bold")
+Desired_font1 =tkinter.font.Font( family = "Times New Roman", 
+                                 size = 25, 
+                                 weight = "bold")
 
-lb1=tk.Label(root,bg=rgb_hack((253,203,169)),text='paste your url here:').place(x = 30,y = 50)
 
-lb2=tk.Label(root,
-text='NOTE:paste your url as this format \nhttps://www.youtube.com/watch?v=(n06H7OcPd-g)\nin your link last part has to be used'
-   ).place(x=30,y=300)
+labelText=Label(root,text='converted text will appear here: ',bg=rgb_hack((204, 255, 204)))
+labelText.configure(font=Desired_font)
+labelText.place(x=700,y=40)
 
-e1=tk.Entry(root,textvariable=var).place(x=200,y=50)
+# text box which is converted and translated.
+text1=tk.Text(root,height=30,width=100)
+text1.config(yscrollcommand=scrollbar.set)
+scrollbar.config(command=text1.yview)
+text1.place(x=700,y=75)
+
+# counting number of words
+count=0
+count1=Label(root,text='number of words are',bg=rgb_hack((204, 255, 204)))
+count1.configure(font=Desired_font)
+count1.place(x=700,y=575)
+
+
+# MAIN HEADING
+lb8=Label(root,text='Extract text from video',bg=rgb_hack((204, 255, 204)))
+lb8.configure(font=Desired_font1)
+lb8.pack()
+
+#Taking input from user
+lb1=tk.Label(root,text='paste your url here:',bg=rgb_hack((191, 191, 191)))
+lb1.configure(font=Desired_font)
+lb1.place(x = 30,y = 80)
+
+
+e1=tk.Entry(root,textvariable=var)
+e1.configure(font=Desired_font)
+e1.place(x=300,y=80)
  
-lb2=tk.Label(root,bg=rgb_hack((253,203,169)),text="Directory to be installed:").place(x=30,y=75)
+lb2=tk.Label(root,text="Directory to be installed:",bg=rgb_hack((191, 191, 191)))
+lb2.configure(font=Desired_font)
+lb2.place(x=30,y=180)
 
-e2=tk.Entry(root,textvariable=var1).place(x=200,y=75)
+e2=tk.Entry(root,textvariable=var1)
+e2.configure(font=Desired_font)
+e2.place(x=300,y=180)
 
-lb3=tk.Label(root,bg=rgb_hack((253,203,169)),text='name including extension:').place(x=30,y=100)
+lb3=tk.Label(root,text='name including extension:',bg=rgb_hack((191, 191, 191)))
+lb3.configure(font=Desired_font)
+lb3.place(x=30,y=280)
 
-e3=tk.Entry(root,textvariable=var2).place(x=200,y=100)
+e3=tk.Entry(root,textvariable=var2)
+e3.configure(font=Desired_font)
+e3.place(x=300,y=280)
+
+lb4=Label(root,text='target language to translate:',bg=rgb_hack((191, 191, 191)))
+lb4.configure(font=Desired_font)
+lb4.place(x=30,y=380)
+
+
+e4=Entry(root,textvariable=var4)
+e4.configure(font=Desired_font)
+e4.place(x=300,y=380)
 
 bt=tk.Button(root,
           text='submit',fg='black',
-          bg=rgb_hack((171, 199, 204)),
-         activebackground='green',
-         activeforeground='white',command=textCommand).place(x=30,y=150)
+          bg=rgb_hack((114, 243, 140)),
+         activebackground='black',
+         activeforeground='white',command=textCommand)
+bt.configure(font=Desired_font)
+bt.place(x=420,y=430)
 
 
+bt1=tk.Button(root,
+          text='clear',fg='black',
+          bg=rgb_hack((114, 243, 140)),
+         activebackground='black',
+         activeforeground='white',command=clear_text)
+bt1.configure(font=Desired_font)
+bt1.place(x=350,y=430)
+#End of mainloop
 root.mainloop()
-
-
-
-#sample youtube video URL
-#link = "https://www.youtube.com/watch?v=mpjREfvZiDs"
-
-
